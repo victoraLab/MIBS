@@ -1,0 +1,443 @@
+---
+title: "MIBS (Multiwell Incidence-based sequencing)"
+author: "Tiago BR Castro"
+date: "7/26/2020"
+output: html_document
+---
+
+
+
+Multiwell Incidence-based sequencing (MIBS) is a methodology used by our group in the article "Tunable dynamics of B cell clonal selection in gut-associated germinal centers”(Nowosad & Mesin et al. 2020) to detect clonal expansions within, and repertoire overlap bertween mice by amplifying Igh rearrangements by  PCR in multiple 100-cell pools. The pipeline we used for analysis of this type of data can be found here.
+
+
+Define basic parameters for the script 
+```{r}
+#minimum.read.number.per.sequence
+#to filter sequences with very low number of reads
+mrn <- 6
+
+#minimum.clone.wells.per.sequence
+#to filter sequences that were only detected in 1 well
+mcw <- 2
+
+#For public clonality remove:
+#tissue.to.remove
+ttr <- "naive"
+```
+
+Install easypackages manager
+```{r}
+if("easypackages" %in% rownames(installed.packages()) == F){
+  install.packages("easypackages")
+}
+```
+
+Load and install necessary packages
+```{r}
+
+library(easypackages)
+pk <- c("Biostrings","yarrr", "tuple","dplyr","data.table","searchable","GDAtools",
+        "tidyverse","openxlsx","stringdist", "gtools","plotly", "readr", "scales", "CircosOut")
+pki <- pk[!pk %in% rownames(installed.packages())]
+easypackages::install_packages(pki)
+libraries(pk)
+```
+
+We load each condition-mouse-tissue sample individually. Each sample was processed using changeO to define B cell clones based on the same V and J genes with a maximum hamming distance of 4nt difference in the CDR3 (VDJ JUNCTION).
+```{r}
+path <- "dataset/splited_database/"
+
+files <- list.files(path)
+
+head(files)
+```
+
+Clonotype analysis per well
+
+```{r}
+#All files are loaded here in a single list
+databases <- lapply(sprintf("%s%s", path , files), fread, header = T, sep = "\t")
+
+#Adds mouse name to each df
+names(databases) <- gsub("_clone.*", "" , files)
+
+#Merge all tables into the same df
+databases <- bind_rows(databases)
+
+#Create unique IDs for each condition-mouse-tissue sample
+databases <- databases %>% mutate(CLONE_ID = paste0(databases$BIO.ID, "_", databases$CLONE))
+```
+
+Number of detected sequences before single-well collapsing
+```{r}
+print(nrow(databases))
+```
+
+Each of the 100-cell pool consists of a tiny bulk Rep-Seq. Here we collapse all identical assemblies contained within a single well since we can't say much of cell number using the number of reads. We also sum up the number of reads in each sequence to obtain an unique sequence representative per well and remove all sequences with 5 reads or less.
+
+```{r}
+#source("Functions/sulk.fun.R")
+mf <- function(x){
+  y <- x[!duplicated(x$CLONE_ID), ]
+  read.c <- aggregate(x[["READ.COUNTS"]], by=list(CLONE_ID=x[["CLONE_ID"]]), FUN=sum)
+  idx <- match(y[["CLONE_ID"]], read.c[["CLONE_ID"]])
+  y[["READ.COUNTS.SUM"]] <- read.c[idx,][["x"]]
+  return(y)
+}
+
+wellcol <- function(databases=databases){
+  clone.temp <- split(databases, f = databases$PLATE_ID)
+  clone.temp2 <- lapply(clone.temp, FUN = mf)
+  final.db <- bind_rows(clone.temp2)
+  return(final.db)
+}
+
+
+final.db <- wellcol(databases = databases)
+
+final.db <- final.db %>% filter(READ.COUNTS.SUM >= mrn)
+```
+Number of detected sequences after single-well collapsing
+```{r}
+print(nrow(final.db))
+```
+
+We can see that each clone is represented once within each well.
+```{r}
+head(final.db %>% group_by(PLATE_ID, CLONE_ID) %>% summarise(number = n(), ))
+```
+
+
+```{r}
+num <- log10(sort(final.db$READ.COUNTS.SUM))
+
+f <- list(
+  family = "Courier New, monospace",
+  size = 18,
+  color = "#7f7f7f"
+)
+
+x <- list(
+  title = "Sorted by Ascending",
+  titlefont = f
+)
+y <- list(
+  title = "log10 (READ.COUNTS.SUM)",
+  titlefont = f
+)
+
+p <- plot_ly(x = ~1:nrow(final.db)) 
+p <- p %>% add_lines(y = num, name = "vh")
+p <- p %>% layout(xaxis = x, yaxis = y)
+
+p <- ggplotly(p)
+p
+```
+
+
+Plot number of sequences per well in each group.tissue
+```{r}
+#Clone.Wells = cw
+#Count the number of clones spanning n wells (maximum is 32 since in our experimental design no sample had more than 32 wells)
+cw <- table(final.db$CLONE_ID)
+# set up cut-off values 
+breaks <- c(1, 2 , 3, 4, 7, 13, 33)
+# specify interval/bin labels
+tags <- c("[1-2)", "[2-3)", "[3-4)","[4-7)","[7-13)", "[13-33)")
+# put values into bins
+group_tags <- cut(cw, 
+                  breaks=breaks, 
+                  include.lowest=TRUE, 
+                  right=FALSE, 
+                  labels=tags)
+# inspect bins
+summary(group_tags)
+```
+
+
+```{r}
+#Extract group names for barplot
+names(group_tags) <- sub("^([^_]*_[^_]*_[^_]*).*", "\\1", names(cw))
+
+#Table each clone present in n number of wells
+bar.count <- table(names(group_tags), group_tags)
+bar.count <- as.matrix(as.data.frame.matrix(bar.count))
+
+#Normalize each value it to 1
+bar.count <- bar.count/rowSums(bar.count)
+#Specify bargraph order
+order <- c(grep('SPF', rownames(bar.count)),
+           grep('GF', rownames(bar.count)),
+           grep('MM12', rownames(bar.count)))
+
+ordered <- rownames(bar.count)[order]
+
+idx <- grep('naive', ordered)
+
+order <- match(c(ordered[-idx], ordered[idx]),rownames(bar.count))
+
+#Create colors for bars
+
+colors <- hue_pal()(length(colnames(bar.count)))
+
+#Change order
+y <- t(bar.count[order,])
+# Increase margin size
+#Plot bar 
+
+par(mar=c(5,5,1,5)); barplot(y*100, ylab = 'Percentage of sequences in n wells', 
+        cex.names=.4, col = colors, horiz = F, las=2, legend.text=TRUE,
+        args.legend=list(
+          x=ncol(y) + 17.4,
+          y=100,
+          bty = "n"
+        )
+)
+
+#Remap 
+write.xlsx(y, "results/barplot.table.xlsx", row.names = T)
+```
+
+We observe that GF and MM12 have several clones that are present in multiple wells in both mLN and PP, while SPF mice rarely display clones in more than 13 wells. Interestingly, in all conditions, naive cells are detected in a single well at ~99% of the wells, which is expected due to the high variability of this cell population.
+
+However this bar plot is showing clone.wells unweighted. For example, meaning that a clone present in 32 wells count as 1. Next we would like to weight clone.wells so we can visualize better the sharing distribution.
+
+Using a weight corresponding to the clone*well size:
+
+First we calculate the weighted mean for each bin
+```{r}
+w1 <- table(cw[cw > 3 & cw < 7])/sum(table(cw[cw > 3 & cw < 7]))
+
+w1 <- weighted.mean(c(4,5,6), w1)
+```
+
+```{r}
+w2 <- table(cw[cw > 6 & cw < 13])/sum(table(cw[cw > 6 & cw < 13]))
+
+w2 <- weighted.mean(c(7:12), w2)
+```
+
+```{r}
+w3 <- table(cw[cw > 12 & cw < 33])/sum(table(cw[cw > 12 & cw < 33]))
+
+w3 <- weighted.mean(c(13:32), w3)
+```
+
+
+```{r}
+#Table each clone present in n number of wells
+bar.count <- table(names(group_tags), group_tags)
+bar.count <- as.matrix(as.data.frame.matrix(bar.count))
+```
+
+```{r}
+bar.count[,1] <- bar.count[,1] * 1
+bar.count[,2] <- bar.count[,2] * 2
+bar.count[,3] <- bar.count[,3] * 3
+
+
+bar.count[,4] <- bar.count[,4] * w1
+bar.count[,5] <- bar.count[,5] * w2
+bar.count[,6] <- bar.count[,6] * w3
+```
+
+
+```{r}
+#Normalize each value it to 1
+bar.count <- bar.count/rowSums(bar.count)
+#Specify bargraph order
+order <- c(grep('SPF', rownames(bar.count)),
+           grep('GF', rownames(bar.count)),
+           grep('MM12', rownames(bar.count)))
+
+ordered <- rownames(bar.count)[order]
+
+idx <- grep('naive', ordered)
+
+order <- match(c(ordered[-idx], ordered[idx]),rownames(bar.count))
+
+#Create colors for bars
+
+colors <- hue_pal()(length(colnames(bar.count)))
+
+#Change order
+y <- t(bar.count[order,])
+# Increase margin size
+#Plot bar 
+
+par(mar=c(5,5,1,5)); barplot(y*100, ylab = 'Percentage of sequences in n wells', 
+        cex.names=.4, col = colors, horiz = F, las=2, legend.text=TRUE,
+        args.legend=list(
+          x=ncol(y) + 17.4,
+          y=100,
+          bty = "n"
+        )
+)
+
+#Remap 
+write.xlsx(y, "results/barplot.table.xlsx", row.names = T)
+```
+
+
+```{r}
+# weight <- plyr::revalue(group_tags, c("[1-2)" = 1,
+#                             "[2-3)" = 2,
+#                             "[3-4)" = 3,
+#                             "[4-7)" = w1,
+#                             "[7-13)" = w2, 
+#                             "[13-33)" = w3))
+# 
+# 
+# y2 <- prop.wtable(names(group_tags), group_tags, w = as.numeric(as.character(weight)), dir=1, na = F , mar = F)
+# 
+# #Specify bargraph order
+# order <- c(grep('SPF', rownames(y2)),
+#            grep('GF', rownames(y2)),
+#            grep('MM12', rownames(y2)))
+# 
+# ordered <- rownames(y2)[order]
+# 
+# idx <- grep('naive', ordered)
+# 
+# order <- match(c(ordered[-idx], ordered[idx]),rownames(y2))
+# 
+# #Create colors for bars
+# colors <- hue_pal()(length(colnames(y2)))
+# 
+# #Change order
+# y <- t(y2[order,])
+# # Increase margin size
+# #Plot bar 
+# 
+# par(mar=c(5,5,1,5)); barplot(y, ylab = 'Percentage of sequences in n wells', 
+#         cex.names=.4, col = colors, horiz = F, las=2, legend.text=TRUE,
+#         args.legend=list(
+#           x=ncol(y) + 17.4,
+#           y=max(colSums(y)),
+#           bty = "n"
+#         )
+# )
+# 
+```
+
+Plot number of unique sequences per well:
+
+```{r}
+cells.wells <- table(final.db$PLATE_ID)
+#names(cells.wells) <- gsub("^(P[0-9]{2})([A-Z][0-9]{2})","\\1_\\2", names(cells.wells))
+#cells.wells <- cells.wells[mixedorder(names(cells.wells))]
+#table(final.db$PLATE_ID, final.db$TISSUE)
+
+x <- list(
+  title = "Sequence number",
+  titlefont = f
+)
+y <- list(
+  title = "Well number",
+  titlefont = f
+)
+
+fig <- plot_ly(x = cells.wells, type = "histogram") %>% layout(xaxis = x, yaxis = y)
+
+fig
+```
+
+
+```{r}
+cells.wells <- table(final.db$PLATE_ID, final.db$TISSUE)
+#Fix these labels
+#names(cells.wells) <- gsub("^(P[0-9]{2})([A-Z][0-9]{2})","\\1_\\2", names(cells.wells))
+#cells.wells <- cells.wells[mixedorder(names(cells.wells))]
+#table(final.db$PLATE_ID, final.db$TISSUE)
+colnames(cells.wells)
+```
+
+Spliting each well based on the sampled tissue, we can observe that mLN and PP have on average, 25.76 and 21.79 sequences per well. While naive B cells have on average 52.89 sequences per well. This is probably due to more diverse repertoire within naive cells when compared to mLN and PP which are populated by more expanded cells.
+
+```{r}
+x <- list(
+  title = "Sequence number",
+  titlefont = f
+)
+y <- list(
+  title = "Well number",
+  titlefont = f
+)
+
+fig <- plot_ly(x = cells.wells[,1][cells.wells[,1] > 0], type = "histogram", alpha = 0.6, name = "mLN") %>% 
+  layout(xaxis = x, yaxis = y)
+  
+fig <- fig %>% add_histogram(x = ~cells.wells[,2][cells.wells[,2] > 0], name = "Naive")
+fig <- fig %>% add_histogram(x = ~cells.wells[,1][cells.wells[,1] > 0], name = "PP")
+
+fig
+```
+
+```{r}
+df0 <- as.data.frame.matrix(table(final.db$PLATE_ID, final.db$TISSUE))
+df0 <- as.data.frame(df0)
+df0$TISSUE <- 0
+
+for(i in 1:nrow(df0)){ df0$TISSUE[i] <- colnames(df0)[df0[i,] != 0]}
+
+
+df <- data.frame(index=1:length(cells.wells), wells=cells.wells, sample = df0$TISSUE)
+
+p <- ggplot(data=df, aes(x=wells.Var1, y=wells.Freq, fill = sample)) +
+    geom_bar(stat="identity")
+
+fig <- ggplotly(p)
+
+fig
+```
+
+Plot number of sequences per well distribution
+```{r}
+
+cells.wells <- table(final.db$PLATE_ID)
+df <- as.data.frame(cells.wells)
+
+TISSUE <- final.db[match(as.character(gsub("_", "",as.character(df$Var1))), final.db$PLATE_ID),]$TISSUE
+STRAIN <- final.db[match(as.character(gsub("_", "",as.character(df$Var1))), final.db$PLATE_ID),]$STRAIN
+BIO <- final.db[match(as.character(gsub("_", "",as.character(df$Var1))), final.db$PLATE_ID),]$BIO.ID
+
+df <- df %>% mutate(STRAIN = STRAIN)
+df <- df %>% mutate(TISSUE = TISSUE)
+df <- df %>% mutate(BIO = BIO)
+df[grep( "naive", df$BIO),]$STRAIN <- "Naive"
+
+df$STRAIN <- factor(df$STRAIN, levels =c("SPF", "GF", "MM12", "Naive"))
+
+write.xlsx(df,"Sulk_Results/pirateplot.table.xlsx")
+
+pirateplot(formula = Freq ~ STRAIN,
+           data = df,ylim = c(0,100),
+           inf.method	= "iqr",
+           main = "Clones Number per Well", xlab = "Groups", ylab = "Number" ,
+           theme = 2)
+
+
+
+```
+
+
+```{r}
+x <- list(
+  title = "Sequence number",
+  titlefont = f
+)
+y <- list(
+  title = "Well number",
+  titlefont = f
+)
+
+fig <- plot_ly(x = df %>% filter(STRAIN == "SPF") %>% .$Freq, type = "histogram", alpha = 0.6, name = "SPF") %>% 
+  layout(xaxis = x, yaxis = y)
+  
+fig <- fig %>% add_histogram(x = ~df %>% filter(STRAIN == "GF") %>% .$Freq, name = "GF")
+fig <- fig %>% add_histogram(x = ~df %>% filter(STRAIN == "MM12") %>% .$Freq, name = "MM12")
+fig <- fig %>% add_histogram(x = ~df %>% filter(STRAIN == "Naive") %>% .$Freq, name = "Naive")
+
+fig
+```
+

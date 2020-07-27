@@ -1,0 +1,267 @@
+---
+title: "public"
+author: "Tiago BR Castro"
+date: "7/26/2020"
+output: html_document
+---
+
+```{r Public Clone analysis}
+##################################################################
+#   ___       _     _ _          _               _           _     
+#  / _ \_   _| |__ | (_) ___    /_\  _ __   __ _| |_   _ ___(_)___ 
+# / /_)/ | | | '_ \| | |/ __|  //_\\| '_ \ / _` | | | | / __| / __|
+#/ ___/| |_| | |_) | | | (__  /  _  \ | | | (_| | | |_| \__ \ \__ \
+#\/     \__,_|_.__/|_|_|\___| \_/ \_/_| |_|\__,_|_|\__, |___/_|___/
+#                                                  |___/           
+
+##################################################################
+```
+
+
+```{r}
+sulk.db <- readr::read_delim("dataset/public_4nt/4nt_Changeo.tab", delim = "\t")
+```
+
+
+
+Sorting clones and groupping based on CDR3_V_J_well
+each unique sequence can only exist once within each well:
+
+```{r}
+sulk.db %>% dplyr::group_by(JUNCTION_AA, VGENE, JGENE, PLATE_ID) %>% dplyr::summarise(number = n())  %>% arrange(desc(number))
+```
+
+
+
+```{r}
+sulk.db$aa_clone <- paste0(sulk.db$JUNCTION_AA,"_",sulk.db$CLONE)
+
+sulk.db.kar <- sulk.db %>% group_by(MOUSE, CLONE) %>% summarise(Size = n(), JUNCTIONS = toString(JUNCTION_AA), VCALL = toString(V_CALL),VGENE = toString(VGENE), JGENE = toString(JGENE)) %>% arrange(desc(Size))
+
+head(sulk.db.kar)
+sulk.db.kar
+```
+
+```{r}
+sulk.db.kar <- sulk.db.kar %>% filter (Size > 1)
+nrow(sulk.db.kar)
+head(sulk.db.kar)
+```
+
+```{r}
+sulk.db.kar$CLONE_MOUSE <- paste0(sulk.db.kar$CLONE,"_",sulk.db.kar$MOUSE)
+head(sulk.db.kar)
+# split.sulk <- split(sulk.db.kar, f = sulk.db.kar$CLONE)
+# head(split.sulk, 1)
+# split.sulk <- split.sulk[names(nshar)]
+# split.sulk
+write.table(x = link_sel, file = "4nt_link.selction.txt", quote = F, sep = " ")
+link_sel <- readr::read_delim("4nt_link.selction.txt", delim = " ")
+```
+
+```{r}
+sulk.db.kar_split <- split(sulk.db.kar, f = sulk.db.kar$MOUSE)
+
+
+CircosOut::circos.karyotype(karyotype = sulk.db.kar_split, CDR3 = "CLONE", Group = "MOUSE", save = T, file.name = "karyotype.txt")
+```
+
+```{r}
+bands <- readr::read_delim("karyotype.txt", delim = " ", col_names = F)
+bands <- bands[grep("band", bands$X1, invert = F), ]
+head(bands)
+```
+
+
+```{r}
+CircosOut::links(bands = bands)
+```
+
+```{r}
+for(i in 1:nrow(link_sel)){
+idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)
+idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)
+
+String1 <- sulk.db.kar$JUNCTIONS[idx1]
+String2 <- sulk.db.kar$JUNCTIONS[idx2]
+
+S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
+S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
+ 
+ if(all(is.na(match(S1,S2))) == FALSE)
+ {
+  print(sprintf("%s", i) )
+ }else(
+  print("Black")
+ )
+ 
+}
+```
+
+```{r}
+#for venn
+
+#Exact match clones 
+ex.lines <- c(2,4,6,9,16,17,18,19,21,24,25,29,31,33,35,37,39,42,43,46,52,55,56,62,63,64,66,68,69,72,78,80,86,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,115,116,117,118,119,121,122,124,125,126,127,129,130,131,132,133,134,136,138,143,144,145,146,150,151,154,155,164,165,169,183,189,206,216,219,220,221,222,223,224,225,226,228,229,231,232,234,236,240,248,253,259,261,268,270,272,273,279,282,283,287,288,306,314,316,321,325,326,328,329,330,331,332,335,336,338,340,344,345,348,354,356,361,365,366,372,373,376,377,381,383,400,410,411,412,425,434,438,439,447,448,449,455,456,457,458,459,460,461,462,463,465,466,467,468,469,470,472,473,474,476,477,479,480,481,482,484,486,487,488,489,490,491,492,493,494,495,499,516,518,519,520,542,547,551,552,563,564,572,573,577,579,589,595,597,599,605,607,610,617,619,623,624,628,634,635)
+
+
+
+
+
+
+df.venn <- data.frame(X1 = link_sel$X1[ex.lines], X2 = link_sel$X2[ex.lines])
+unique.df <- data.frame(X1 = link_sel$X1[-c(ex.lines)], X2 = link_sel$X2[-c(ex.lines)])
+
+df.venn <- cbind(separate(df.venn, col = X1, sep = "_", into = c("X1","X2")), separate(df.venn, col = X2, sep = "_", into = c("X3","X4")))[,-3]
+
+gf.idx <- grep("GF", df.venn$X2)
+spf.idx <- grep("SPF", df.venn$X2)
+mm12.idx <- grep("MM12", df.venn$X2)
+
+gf.idx2 <- grep("GF", df.venn$X4)
+spf.idx2 <- grep("SPF", df.venn$X4)
+mm12.idx2 <- grep("MM12", df.venn$X4)
+
+venn <- list(GF = c(df.venn[gf.idx,]$X1, df.venn[gf.idx2,]$X3),
+     SPF = c(df.venn[spf.idx,]$X1, df.venn[spf.idx2,]$X3),
+     MM12 = c(df.venn[mm12.idx,]$X1, df.venn[mm12.idx2,]$X3))
+
+str(venn)
+
+Circos.Venn_exact <- Venn(Sets = venn)
+plot(Circos.Venn_exact, doWeights = F)
+
+```
+
+
+```{r}
+for(i in 1:nrow(link_sel)){
+idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)  
+idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)  
+String1 <- sulk.db.kar$JUNCTIONS[idx1]
+String2 <- sulk.db.kar$JUNCTIONS[idx2]
+
+StringV1 <- sulk.db.kar$VGENE[idx1]
+StringV2 <- sulk.db.kar$VGENE[idx2]
+S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
+S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
+ 
+ 
+if( length(grep("IGHV1-47", StringV1 )) > 0){
+  match1 <- Biostrings::matchPattern("CARGSNY", String1 , max.mismatch = 0)
+  match2 <- Biostrings::matchPattern("CARGSNY", String2 , max.mismatch = 0)
+  if( length(match1) + length(match2)  > 1 ){
+    print("red")
+  } else{print("black")}
+} else{print("black")}
+}
+```
+
+```{r}
+for(i in 1:nrow(link_sel)){
+idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)  
+idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)  
+String1 <- sulk.db.kar$JUNCTIONS[idx1]
+String2 <- sulk.db.kar$JUNCTIONS[idx2]
+
+StringV1 <- sulk.db.kar$VGENE[idx1]
+StringV2 <- sulk.db.kar$VGENE[idx2]
+S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
+S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
+ 
+ 
+if( length(grep("IGHV1-12", StringV1 )) > 0){
+  match1 <- Biostrings::matchPattern("AREGFAY", String1 , max.mismatch = 0)
+  match2 <- Biostrings::matchPattern("AREGFAY", String2 , max.mismatch = 0)
+  if( length(match1) + length(match2)  > 1 ){
+    print("red")
+  } else{print("black")}
+} else{print("black")}
+}
+```
+
+
+
+
+```{r}
+for(i in 1:nrow(sulk.db.kar)){
+
+String1 <- sulk.db.kar$JUNCTIONS[i]
+
+StringV1 <- sulk.db.kar$VGENE[i]
+
+S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
+
+  if(length( grep("IGHV1-12", StringV1 )) > 0){
+  match1 <- Biostrings::matchPattern("AREGFAY", String1 , min.mismatch = 1, max.mismatch = 1)
+  if(length(match1) > 0){
+    print(sprintf("%s_%s", i, sulk.db.kar$CLONE_MOUSE[i]))
+  }
+  else{print("FALSE")
+    }
+  }else{print("FALSE")
+    }
+
+  
+
+}
+
+
+```
+
+```{r}
+kar <- readr::read_delim(file = "karyotype.txt", delim = " ", col_names = F)
+kar <- kar[grep("band", kar$X1),]
+kar$X8 <- paste0(kar$X3, "_",kar$X2)
+
+kar$X7 <- gsub("stalk","gpos50",kar$X7)
+
+aa2_argsny <- c("4487_GFM2","8667_GFM2","8667_GFM1","8667_GFM4","3704_GFM3","4487_MM12M5","2263_MM12M2","3899_GFM3","8667_MM12M4","4487_MM12M7","8668_GFM4","3522_GFM4","8667_MM12M5","4487_MM12M1","5098_GFM3","4487_GFM3","8667_GFM3","4487_MM12M2","4488_MM12M6","4487_GFM1","8668_GFM1","1687_MM12M7","5223_GFM5","1687_MM12M5","8667_GFM5","8668_GFM5","3704_MM12M6","5436_GFM2","4489_MM12M7","5224_GFM4","1687_GFM5","2261_GFM1","3903_GFM1","4119_GFM1","5227_GFM1","5434_GFM1","5209_GFM2","5229_GFM3","3896_MM12M7","4487_GFM6","8667_MM12M7","8667_SPFM1","5220_GFM2","3709_GFM4","8674_GFM4","4487_GFM5","2261_MM12M1","1687_MM12M3","8667_MM12M3","4487_MM12M4","8665_MM12M5","3704_GFM1","8679_GFM1","782_GFM2","3704_GFM2","5219_GFM3","5214_GFM4","3704_GFM5","1687_MM12M2","2261_MM12M2","3521_MM12M4","5210_MM12M5","3524_GFM1","3896_GFM1","6722_GFM2","8682_GFM3","3524_GFM4","4487_GFM4","5215_GFM4","4496_GFM5","8667_GFM6","6632_MM12M1","5205_MM12M2","5213_MM12M4","2261_MM12M5","5211_MM12M5","6631_MM12M6")
+
+aa1_argsny <- c("4487_GFM2","8667_GFM2","8667_GFM1","8667_GFM4","3704_GFM3","4487_MM12M5","3899_GFM3","8667_MM12M4","8668_GFM4","3522_GFM4","8667_MM12M5","4487_GFM3","8667_GFM3","4487_MM12M2","4488_MM12M6","4487_GFM1","8668_GFM1","1687_MM12M7","5223_GFM5","1687_MM12M5","3704_MM12M6","5436_GFM2","4489_MM12M7","1687_GFM5","3903_GFM1","4119_GFM1","5227_GFM1","5209_GFM2","5229_GFM3","4487_GFM6","8667_SPFM1","4487_GFM5","2261_MM12M1","1687_MM12M3","4487_MM12M4","8665_MM12M5","782_GFM2","5219_GFM3","1687_MM12M2","2261_MM12M2","3524_GFM1","3524_GFM4","4487_GFM4","5215_GFM4","4496_GFM5","8667_GFM6","5213_MM12M4","2261_MM12M5")
+
+
+x1 <- data.frame()
+band <- data.frame()
+for(i in aa1_argsny){
+  
+  kar[grep(i, kar$X8),]$X7 <- "stalk"
+  
+  
+}
+
+#write.table(x = band, file = "argsny.txt", quote = F, sep = " ")
+write.table(x = kar, file = "karargsny1aa.txt", quote = F, sep = " ")
+```
+
+
+```{r}
+
+for(i in 1:nrow(link_sel)){
+idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)  
+idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)  
+String1 <- sulk.db.kar$JUNCTIONS[idx1]
+String2 <- sulk.db.kar$JUNCTIONS[idx2]
+
+StringV1 <- sulk.db.kar$VGENE[idx1]
+StringV2 <- sulk.db.kar$VGENE[idx2]
+S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
+S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
+ 
+ 
+if( length(grep("IGHV1-47", StringV1 )) > 0){
+  match1 <- Biostrings::matchPattern("ARGSNY", String1 , max.mismatch = 0)
+  match2 <- Biostrings::matchPattern("ARGSNY", String2 , max.mismatch = 0)
+  if( length(match1) + length(match2)  > 1 ){
+    print("red")
+  } else{print("black")}
+} else{print("black")}
+}
+```
+
+```{r}
+library(Vennerable)
+
+sulk.db.kar
+```
+
