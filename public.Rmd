@@ -18,250 +18,163 @@ output: html_document
 ```
 
 
+Install easypackages manager
 ```{r}
-sulk.db <- readr::read_delim("dataset/public_4nt/4nt_Changeo.tab", delim = "\t")
+if("easypackages" %in% rownames(installed.packages()) == F){
+  install.packages("easypackages")
+}
+```
+
+Load and install necessary packages
+```{r}
+library(easypackages)
+pk <- c("Biostrings","yarrr", "tuple","dplyr","data.table","searchable","GDAtools","DT",
+        "tidyverse","openxlsx","stringdist", "gtools","plotly", "readr", "scales", "CircosOut")
+pki <- pk[!pk %in% rownames(installed.packages())]
+easypackages::install_packages(pki)
+libraries(pk)
 ```
 
 
+```{r}
+sulk.db <- readr::read_delim("dataset/public_4nt/4nt_Changeo.tab", delim = "\t")
+```
 
 Sorting clones and groupping based on CDR3_V_J_well
 each unique sequence can only exist once within each well:
 
 ```{r}
-sulk.db %>% dplyr::group_by(JUNCTION_AA, VGENE, JGENE, PLATE_ID) %>% dplyr::summarise(number = n())  %>% arrange(desc(number))
+sulk.db.one <- sulk.db %>% dplyr::group_by(JUNCTION_AA, VGENE, JGENE, PLATE_ID) %>% dplyr::summarise(number = n())  %>% arrange(desc(number))
+
+sulk.db.one
 ```
 
-
-
+Create the public clonotype database (themes), with identical VJ and 4nt separation in JUNCTION.
 ```{r}
 sulk.db$aa_clone <- paste0(sulk.db$JUNCTION_AA,"_",sulk.db$CLONE)
 
 sulk.db.kar <- sulk.db %>% group_by(MOUSE, CLONE) %>% summarise(Size = n(), JUNCTIONS = toString(JUNCTION_AA), VCALL = toString(V_CALL),VGENE = toString(VGENE), JGENE = toString(JGENE)) %>% arrange(desc(Size))
 
+
 head(sulk.db.kar)
-sulk.db.kar
+#saveRDS(sulk.db.kar, "results/sulk.db.kar.rds")
 ```
 
+Number of themes
 ```{r}
-sulk.db.kar <- sulk.db.kar %>% filter (Size > 1)
 nrow(sulk.db.kar)
-head(sulk.db.kar)
+```
+
+#Remove themes that are present in a single well
+```{r}
+sulk.db.kar.more <- sulk.db.kar %>% filter (Size > 1)
+saveRDS(sulk.db.kar.more, "results/sulk.db.kar.more.rds")
+```
+
+Number of themes, > 1 well
+```{r}
+nrow(sulk.db.kar.more)
 ```
 
 ```{r}
-sulk.db.kar$CLONE_MOUSE <- paste0(sulk.db.kar$CLONE,"_",sulk.db.kar$MOUSE)
-head(sulk.db.kar)
-# split.sulk <- split(sulk.db.kar, f = sulk.db.kar$CLONE)
+sulk.db.kar.more$CLONE_MOUSE <- paste0(sulk.db.kar.more$CLONE,"_",sulk.db.kar.more$MOUSE)
+head(sulk.db.kar.more)
+# split.sulk <- split(sulk.db.kar.more, f = sulk.db.kar.more$CLONE)
 # head(split.sulk, 1)
 # split.sulk <- split.sulk[names(nshar)]
 # split.sulk
-write.table(x = link_sel, file = "4nt_link.selction.txt", quote = F, sep = " ")
-link_sel <- readr::read_delim("4nt_link.selction.txt", delim = " ")
+#write.table(x = link_sel, file = "4nt_link.selction.txt", quote = F, sep = " ")
+#link_sel <- readr::read_delim("4nt_link.selction.txt", delim = " ")
 ```
 
 ```{r}
-sulk.db.kar_split <- split(sulk.db.kar, f = sulk.db.kar$MOUSE)
+sulk.db.kar.more_split <- split(sulk.db.kar.more, f = sulk.db.kar.more$MOUSE)
+```
 
+The circos.karyotype function takes a dataframe list as input to build a fake karyotype-like file, following the circos format rules, to be used in the circos software. Each data frame, here all 19 mice used in this experiment, will become a chromossome-like entity. Morever, here we take advantage of the use of bands by circos, to describe chromossal bands, and use that to represent clonotypes (CDR3 = CLONE), of any size. A Size named column, with the size of each clonal entity, must be present. The circos.karyotype function should save a ready to use file for circos with an assembled karyotype-like design of your clonal data. The group parameter just points to the data frame split column.
 
-CircosOut::circos.karyotype(karyotype = sulk.db.kar_split, CDR3 = "CLONE", Group = "MOUSE", save = T, file.name = "karyotype.txt")
+```{r}
+source("scripts/circos.karyotype.R")
 ```
 
 ```{r}
-bands <- readr::read_delim("karyotype.txt", delim = " ", col_names = F)
+circos.karyotype(karyotype = sulk.db.kar.more_split, CDR3 = "CLONE", Group = "MOUSE", save = T, file.name = "results/forcircos/karyotype.txt")
+```
+
+The writebin function produces a null-terminated string on the last line of the file. I haven't seen circos complaining about it but I like to remove it anyways.
+
+```{bash}
+tr < results/forcircos/karyotype.txt -d '\000' > tmp && mv tmp results/forcircos/karyotype.txt
+```
+
+We read the karyotype file and extract band lines
+```{r}
+bands <- readr::read_delim("results/forcircos/karyotype.txt", delim = " ", col_names = F)
 bands <- bands[grep("band", bands$X1, invert = F), ]
 head(bands)
 ```
 
+The links function will compare the clonotype IDs (CDR3 themes) between mice, finding the maximum clonotype sharing. Here we use the circos links or ribbons to guide us through the public CDR3 in the data. 
 
 ```{r}
-CircosOut::links(bands = bands)
+source("scripts/links.R")
 ```
 
 ```{r}
-for(i in 1:nrow(link_sel)){
-idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)
-idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)
-
-String1 <- sulk.db.kar$JUNCTIONS[idx1]
-String2 <- sulk.db.kar$JUNCTIONS[idx2]
-
-S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
-S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
- 
- if(all(is.na(match(S1,S2))) == FALSE)
- {
-  print(sprintf("%s", i) )
- }else(
-  print("Black")
- )
- 
-}
+links <- capture.output(links(bands = bands, CDR3 = "X3",Group = "X2", coord1 = "X5", coord2 = "X6"))
+zz <- file("results/forcircos/links.txt", "wb")
+  writeBin(paste(links, collapse = "\n"), zz)
+  close(zz)
 ```
 
+Clean the captured output using bash
+```{bash}
+cut -d '"' -f 2 results/forcircos/links.txt > tmp && mv tmp results/forcircos/links.txt
+tr < results/forcircos/links.txt -d '\000' > tmp && mv tmp results/forcircos/links.txt
+grep -v NULL results/forcircos/links.txt > tmp && mv tmp results/forcircos/links.txt
+#
+#sed -e :a -e '$d;N;2,1ba' -e 'P;D' results/forcircos/links.txt > tmp && mv tmp results/forcircos/links.txt
+```
+
+The karyotype and links files are necessary to generate a image like this. The circos folder contains the necessary configuration files to generate the circos image. Check how to use and install circos at http://circos.ca/.
+
+```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+knitr::include_graphics("circos/1_4nt/plots/circos.png")
+```
+
+Circos allow us to add a metadata column in the links file that are very useful to various manipulations like filtering or color changing based on different criteria. Here we added to the links.txt a variable color based on clonal links that contain at least 1 CDR3 with exact matches. Using the circos.conf file, we can add a rule to filter out non-identical matches.
+
+```{bash}
+head circos/2_Exact/data/links.txt
+```
+
+```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+knitr::include_graphics("circos/2_Exact/plots/circos.png")
+```
+
+We can also add a rule in circos to display only the links that the sum of both ends are bigger than 30.
+It looks like this:
 ```{r}
-#for venn
+#<rule>
+#tag = sizes
+#condition  = var(size1) + var(size2) < 30
+#show = no
+#flow = continue
+#</rule>
+```
 
-#Exact match clones 
-ex.lines <- c(2,4,6,9,16,17,18,19,21,24,25,29,31,33,35,37,39,42,43,46,52,55,56,62,63,64,66,68,69,72,78,80,86,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,115,116,117,118,119,121,122,124,125,126,127,129,130,131,132,133,134,136,138,143,144,145,146,150,151,154,155,164,165,169,183,189,206,216,219,220,221,222,223,224,225,226,228,229,231,232,234,236,240,248,253,259,261,268,270,272,273,279,282,283,287,288,306,314,316,321,325,326,328,329,330,331,332,335,336,338,340,344,345,348,354,356,361,365,366,372,373,376,377,381,383,400,410,411,412,425,434,438,439,447,448,449,455,456,457,458,459,460,461,462,463,465,466,467,468,469,470,472,473,474,476,477,479,480,481,482,484,486,487,488,489,490,491,492,493,494,495,499,516,518,519,520,542,547,551,552,563,564,572,573,577,579,589,595,597,599,605,607,610,617,619,623,624,628,634,635)
-
-
-
-
-
-
-df.venn <- data.frame(X1 = link_sel$X1[ex.lines], X2 = link_sel$X2[ex.lines])
-unique.df <- data.frame(X1 = link_sel$X1[-c(ex.lines)], X2 = link_sel$X2[-c(ex.lines)])
-
-df.venn <- cbind(separate(df.venn, col = X1, sep = "_", into = c("X1","X2")), separate(df.venn, col = X2, sep = "_", into = c("X3","X4")))[,-3]
-
-gf.idx <- grep("GF", df.venn$X2)
-spf.idx <- grep("SPF", df.venn$X2)
-mm12.idx <- grep("MM12", df.venn$X2)
-
-gf.idx2 <- grep("GF", df.venn$X4)
-spf.idx2 <- grep("SPF", df.venn$X4)
-mm12.idx2 <- grep("MM12", df.venn$X4)
-
-venn <- list(GF = c(df.venn[gf.idx,]$X1, df.venn[gf.idx2,]$X3),
-     SPF = c(df.venn[spf.idx,]$X1, df.venn[spf.idx2,]$X3),
-     MM12 = c(df.venn[mm12.idx,]$X1, df.venn[mm12.idx2,]$X3))
-
-str(venn)
-
-Circos.Venn_exact <- Venn(Sets = venn)
-plot(Circos.Venn_exact, doWeights = F)
-
+```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+knitr::include_graphics("circos/3_Expanded/plots/circos.png")
 ```
 
 
-```{r}
-for(i in 1:nrow(link_sel)){
-idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)  
-idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)  
-String1 <- sulk.db.kar$JUNCTIONS[idx1]
-String2 <- sulk.db.kar$JUNCTIONS[idx2]
-
-StringV1 <- sulk.db.kar$VGENE[idx1]
-StringV2 <- sulk.db.kar$VGENE[idx2]
-S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
-S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
- 
- 
-if( length(grep("IGHV1-47", StringV1 )) > 0){
-  match1 <- Biostrings::matchPattern("CARGSNY", String1 , max.mismatch = 0)
-  match2 <- Biostrings::matchPattern("CARGSNY", String2 , max.mismatch = 0)
-  if( length(match1) + length(match2)  > 1 ){
-    print("red")
-  } else{print("black")}
-} else{print("black")}
-}
+```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+knitr::include_graphics("circos/4_ARGSNY/plots/circos.png")
 ```
 
-```{r}
-for(i in 1:nrow(link_sel)){
-idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)  
-idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)  
-String1 <- sulk.db.kar$JUNCTIONS[idx1]
-String2 <- sulk.db.kar$JUNCTIONS[idx2]
-
-StringV1 <- sulk.db.kar$VGENE[idx1]
-StringV2 <- sulk.db.kar$VGENE[idx2]
-S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
-S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
- 
- 
-if( length(grep("IGHV1-12", StringV1 )) > 0){
-  match1 <- Biostrings::matchPattern("AREGFAY", String1 , max.mismatch = 0)
-  match2 <- Biostrings::matchPattern("AREGFAY", String2 , max.mismatch = 0)
-  if( length(match1) + length(match2)  > 1 ){
-    print("red")
-  } else{print("black")}
-} else{print("black")}
-}
+```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+knitr::include_graphics("circos/5_AREGFAY/plots/circos.png")
 ```
 
 
-
-
-```{r}
-for(i in 1:nrow(sulk.db.kar)){
-
-String1 <- sulk.db.kar$JUNCTIONS[i]
-
-StringV1 <- sulk.db.kar$VGENE[i]
-
-S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
-
-  if(length( grep("IGHV1-12", StringV1 )) > 0){
-  match1 <- Biostrings::matchPattern("AREGFAY", String1 , min.mismatch = 1, max.mismatch = 1)
-  if(length(match1) > 0){
-    print(sprintf("%s_%s", i, sulk.db.kar$CLONE_MOUSE[i]))
-  }
-  else{print("FALSE")
-    }
-  }else{print("FALSE")
-    }
-
-  
-
-}
-
-
-```
-
-```{r}
-kar <- readr::read_delim(file = "karyotype.txt", delim = " ", col_names = F)
-kar <- kar[grep("band", kar$X1),]
-kar$X8 <- paste0(kar$X3, "_",kar$X2)
-
-kar$X7 <- gsub("stalk","gpos50",kar$X7)
-
-aa2_argsny <- c("4487_GFM2","8667_GFM2","8667_GFM1","8667_GFM4","3704_GFM3","4487_MM12M5","2263_MM12M2","3899_GFM3","8667_MM12M4","4487_MM12M7","8668_GFM4","3522_GFM4","8667_MM12M5","4487_MM12M1","5098_GFM3","4487_GFM3","8667_GFM3","4487_MM12M2","4488_MM12M6","4487_GFM1","8668_GFM1","1687_MM12M7","5223_GFM5","1687_MM12M5","8667_GFM5","8668_GFM5","3704_MM12M6","5436_GFM2","4489_MM12M7","5224_GFM4","1687_GFM5","2261_GFM1","3903_GFM1","4119_GFM1","5227_GFM1","5434_GFM1","5209_GFM2","5229_GFM3","3896_MM12M7","4487_GFM6","8667_MM12M7","8667_SPFM1","5220_GFM2","3709_GFM4","8674_GFM4","4487_GFM5","2261_MM12M1","1687_MM12M3","8667_MM12M3","4487_MM12M4","8665_MM12M5","3704_GFM1","8679_GFM1","782_GFM2","3704_GFM2","5219_GFM3","5214_GFM4","3704_GFM5","1687_MM12M2","2261_MM12M2","3521_MM12M4","5210_MM12M5","3524_GFM1","3896_GFM1","6722_GFM2","8682_GFM3","3524_GFM4","4487_GFM4","5215_GFM4","4496_GFM5","8667_GFM6","6632_MM12M1","5205_MM12M2","5213_MM12M4","2261_MM12M5","5211_MM12M5","6631_MM12M6")
-
-aa1_argsny <- c("4487_GFM2","8667_GFM2","8667_GFM1","8667_GFM4","3704_GFM3","4487_MM12M5","3899_GFM3","8667_MM12M4","8668_GFM4","3522_GFM4","8667_MM12M5","4487_GFM3","8667_GFM3","4487_MM12M2","4488_MM12M6","4487_GFM1","8668_GFM1","1687_MM12M7","5223_GFM5","1687_MM12M5","3704_MM12M6","5436_GFM2","4489_MM12M7","1687_GFM5","3903_GFM1","4119_GFM1","5227_GFM1","5209_GFM2","5229_GFM3","4487_GFM6","8667_SPFM1","4487_GFM5","2261_MM12M1","1687_MM12M3","4487_MM12M4","8665_MM12M5","782_GFM2","5219_GFM3","1687_MM12M2","2261_MM12M2","3524_GFM1","3524_GFM4","4487_GFM4","5215_GFM4","4496_GFM5","8667_GFM6","5213_MM12M4","2261_MM12M5")
-
-
-x1 <- data.frame()
-band <- data.frame()
-for(i in aa1_argsny){
-  
-  kar[grep(i, kar$X8),]$X7 <- "stalk"
-  
-  
-}
-
-#write.table(x = band, file = "argsny.txt", quote = F, sep = " ")
-write.table(x = kar, file = "karargsny1aa.txt", quote = F, sep = " ")
-```
-
-
-```{r}
-
-for(i in 1:nrow(link_sel)){
-idx1 <- match(link_sel[i,][1], sulk.db.kar$CLONE_MOUSE)  
-idx2 <- match(link_sel[i,][2], sulk.db.kar$CLONE_MOUSE)  
-String1 <- sulk.db.kar$JUNCTIONS[idx1]
-String2 <- sulk.db.kar$JUNCTIONS[idx2]
-
-StringV1 <- sulk.db.kar$VGENE[idx1]
-StringV2 <- sulk.db.kar$VGENE[idx2]
-S1 <- gsub(" ", "", stri_list2matrix(sapply(String1,  strsplit,',')))  
-S2 <- gsub(" ", "", stri_list2matrix(sapply(String2,  strsplit,',')))  
- 
- 
-if( length(grep("IGHV1-47", StringV1 )) > 0){
-  match1 <- Biostrings::matchPattern("ARGSNY", String1 , max.mismatch = 0)
-  match2 <- Biostrings::matchPattern("ARGSNY", String2 , max.mismatch = 0)
-  if( length(match1) + length(match2)  > 1 ){
-    print("red")
-  } else{print("black")}
-} else{print("black")}
-}
-```
-
-```{r}
-library(Vennerable)
-
-sulk.db.kar
-```
 

@@ -195,7 +195,7 @@ par(mar=c(5,5,1,5)); barplot(y*100, ylab = 'Percentage of sequences in n wells',
 )
 
 #Remap 
-write.xlsx(y, "results/barplot.table.xlsx", row.names = T)
+#write.xlsx(y, "results/barplot.table_unweighted.xlsx", row.names = T)
 ```
 
 We observe that GF and MM12 have several clones that are present in multiple wells in both mLN and PP, while SPF mice rarely display clones in more than 13 wells. Interestingly, in all conditions, naive cells are detected in a single well at ~99% of the wells, which is expected due to the high variability of this cell population.
@@ -275,7 +275,7 @@ par(mar=c(5,5,1,5)); barplot(y*100, ylab = 'Percentage of sequences in n wells',
 )
 
 #Remap 
-write.xlsx(y, "results/barplot.table.xlsx", row.names = T)
+#write.xlsx(y, "results/barplot.table_weighted.xlsx", row.names = T)
 ```
 
 
@@ -408,7 +408,7 @@ df[grep( "naive", df$BIO),]$STRAIN <- "Naive"
 
 df$STRAIN <- factor(df$STRAIN, levels =c("SPF", "GF", "MM12", "Naive"))
 
-write.xlsx(df,"Sulk_Results/pirateplot.table.xlsx")
+#write.xlsx(df,"results/pirateplot.table.xlsx")
 
 pirateplot(formula = Freq ~ STRAIN,
            data = df,ylim = c(0,100),
@@ -420,24 +420,4 @@ pirateplot(formula = Freq ~ STRAIN,
 
 ```
 
-
-```{r}
-x <- list(
-  title = "Sequence number",
-  titlefont = f
-)
-y <- list(
-  title = "Well number",
-  titlefont = f
-)
-
-fig <- plot_ly(x = df %>% filter(STRAIN == "SPF") %>% .$Freq, type = "histogram", alpha = 0.6, name = "SPF") %>% 
-  layout(xaxis = x, yaxis = y)
-  
-fig <- fig %>% add_histogram(x = ~df %>% filter(STRAIN == "GF") %>% .$Freq, name = "GF")
-fig <- fig %>% add_histogram(x = ~df %>% filter(STRAIN == "MM12") %>% .$Freq, name = "MM12")
-fig <- fig %>% add_histogram(x = ~df %>% filter(STRAIN == "Naive") %>% .$Freq, name = "Naive")
-
-fig
-```
 
