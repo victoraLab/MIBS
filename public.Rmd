@@ -138,7 +138,7 @@ grep -v NULL results/forcircos/links.txt > tmp && mv tmp results/forcircos/links
 
 The karyotype and links files are necessary to generate a image like this. The circos folder contains the necessary configuration files to generate the circos image. Check how to use and install circos at http://circos.ca/.
 
-```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+```{r , echo=FALSE, out.width = '30%%'}
 knitr::include_graphics("circos/1_4nt/plots/circos.png")
 ```
 
@@ -148,7 +148,7 @@ Circos allow us to add a metadata column in the links file that are very useful 
 head circos/2_Exact/data/links.txt
 ```
 
-```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+```{r , echo=FALSE, out.width = '30%%'}
 knitr::include_graphics("circos/2_Exact/plots/circos.png")
 ```
 
@@ -163,16 +163,21 @@ It looks like this:
 #</rule>
 ```
 
-```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+```{r , echo=FALSE, out.width = '30%'}
 knitr::include_graphics("circos/3_Expanded/plots/circos.png")
 ```
 
+Later we display only the clonotype sharing that are V1-47-CARGSNY:
 
-```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+
+```{r , echo=FALSE, out.width = '30%'}
 knitr::include_graphics("circos/4_ARGSNY/plots/circos.png")
 ```
 
-```{r 4nt_circos, echo=FALSE, fig.cap="A caption", out.width = '10%'}
+And we also display only the clonotype sharing that are V1-12-CAREGFAY:
+
+
+```{r , echo=FALSE, out.width = '30%'}
 knitr::include_graphics("circos/5_AREGFAY/plots/circos.png")
 ```
 
