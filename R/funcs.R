@@ -23,6 +23,7 @@ wellcol <- function(databases=databases){
 }
 
 #'
+#' @importFrom stringdist stringdist
 #' @export
 #'
 

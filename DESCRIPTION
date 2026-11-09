@@ -1,6 +1,6 @@
 Package: MIBS
 Title: It Helps With The Analysis of Multiwell Incidence-based sequencing (MIBS) Datasets.
-Version: 0.0.0.9003
+Version: 0.0.0.9004
 Authors@R: 
     person(given = "Tiago",
            family = "Castro",
@@ -8,6 +8,16 @@ Authors@R:
            email = "trezende@rockefeller.edu",
            comment = c(ORCID = "0000-0002-0359-0611"))
 Description: Contains functions to facilitate the analysis of MIBS datasets.
+Imports:
+    Biostrings,
+    data.table,
+    dplyr,
+    openxlsx,
+    plotly,
+    readr,
+    scales,
+    stringdist,
+    stringr
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
