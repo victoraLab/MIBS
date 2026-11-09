@@ -28,7 +28,10 @@ wellcol <- function(databases=databases){
 
 group.dist <- function(x, summarise.by = "count", split.by = NULL, pattern = input$pattern){
   dist <- stringdist(x[["JUNCTION_AA"]], pattern, method = "lv")
-  if (split.by == "All" && summarise.by == "count") {
+  # split.by is a per-row label vector (e.g. a column of x), so it is pooled only
+  # when every label is "All" (the bundled datasets carry an "All" column).
+  # Tested as a whole: `&&` needs length-1 operands since R 4.3.
+  if (length(split.by) > 0 && isTRUE(all(split.by == "All")) && summarise.by == "count") {
     dist <- data.frame(lv = dist)
     hist <- dist %>% dplyr::group_by(lv) %>% summarise(n = dplyr::n())
     colnames(hist) <- c("lv", "counts")
