@@ -1,0 +1,16 @@
+Package: MIBS
+Title: It Helps With The Analysis of Multiwell Incidence-based sequencing (MIBS) Datasets.
+Version: 0.0.0.9003
+Authors@R: 
+    person(given = "Tiago",
+           family = "Castro",
+           role = c("aut", "cre"),
+           email = "trezende@rockefeller.edu",
+           comment = c(ORCID = "0000-0002-0359-0611"))
+Description: Contains functions to facilitate the analysis of MIBS datasets.
+License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
+    license
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1

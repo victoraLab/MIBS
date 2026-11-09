@@ -62,7 +62,7 @@ head(sulk.db.kar)
 
 Number of themes
 ```{r}
-nrow(sulk.db.kar)
+nrow(db.themes)
 ```
 
 #Remove themes that are present in a single well

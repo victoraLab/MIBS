@@ -42,3 +42,9 @@ docs/
 
 # translation temp files
 po/*~
+.Rproj.user
+
+#
+dataset/
+circos/
+scripts/
